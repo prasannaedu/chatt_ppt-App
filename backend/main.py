@@ -262,12 +262,12 @@ def theme_colors(style: str, background_color: str = "#FFFFFF"):
 def build_ppt(slides, style: str, background_color: str = "#FFFFFF", include_images: bool = False, content_depth: str = "detailed"):
     """Build PowerPoint presentation with enhanced layout for comprehensive content"""
     try:
-        # Create a new presentation - FIXED: Use proper template
+        # Create a new presentation
         prs = Presentation()
         
-        # Set slide width and height (16:9 aspect ratio - standard for modern presentations)
-        prs.slide_width = Inches(13.33)  # 16:9 width
-        prs.slide_height = Inches(7.5)   # 16:9 height
+        # Set slide width and height (16:9 aspect ratio)
+        prs.slide_width = Inches(13.33)
+        prs.slide_height = Inches(7.5)
         
         colors = theme_colors(style, background_color)
 
@@ -413,10 +413,12 @@ def create_fallback_ppt():
         logger.error(f"Fallback PPT also failed: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create PowerPoint file")
 
-# Database operations (keep the same as before)
+# Database operations
 def init_db():
     conn = sqlite3.connect('presentations.db')
     cursor = conn.cursor()
+    
+    # Create presentations table with all required columns
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS presentations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -428,9 +430,11 @@ def init_db():
             content_depth TEXT DEFAULT 'detailed',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             downloaded BOOLEAN DEFAULT FALSE,
-            download_count INTEGER DEFAULT 0
+            download_count INTEGER DEFAULT 0,
+            UNIQUE(topic, style, background_color, content_depth)  -- Prevent duplicates
         )
     ''')
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS app_metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -438,31 +442,70 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Initialize metrics if not exists
     cursor.execute('INSERT OR IGNORE INTO app_metrics (id, total_downloads) VALUES (1, 0)')
+    
+    # Check if content_depth column exists, if not add it
+    cursor.execute("PRAGMA table_info(presentations)")
+    columns = [column[1] for column in cursor.fetchall()]
+    
+    if 'content_depth' not in columns:
+        print("Adding missing content_depth column to presentations table...")
+        cursor.execute('ALTER TABLE presentations ADD COLUMN content_depth TEXT DEFAULT "detailed"')
+    
     conn.commit()
     conn.close()
     logger.info("Database initialized successfully")
 
+# Initialize database on startup
 init_db()
 
 def save_presentation(history_data: dict) -> int:
-    """Save presentation to database and return the ID"""
+    """Save presentation to database and return the ID - prevent duplicates"""
     conn = sqlite3.connect('presentations.db')
     cursor = conn.cursor()
     
+    # Check if identical presentation already exists
     cursor.execute('''
-        INSERT INTO presentations (topic, slides, style, background_color, include_images, content_depth)
-        VALUES (?, ?, ?, ?, ?, ?)
+        SELECT id FROM presentations 
+        WHERE topic = ? AND style = ? AND background_color = ? AND content_depth = ?
     ''', (
         history_data['topic'],
-        history_data['slides'],
         history_data['style'],
         history_data['background_color'],
-        history_data.get('include_images', False),
         history_data.get('content_depth', 'detailed')
     ))
     
-    presentation_id = cursor.lastrowid
+    existing = cursor.fetchone()
+    
+    if existing:
+        # Update existing record instead of creating duplicate
+        presentation_id = existing[0]
+        cursor.execute('''
+            UPDATE presentations 
+            SET slides = ?, include_images = ?, created_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (
+            history_data['slides'],
+            history_data.get('include_images', False),
+            presentation_id
+        ))
+    else:
+        # Create new presentation
+        cursor.execute('''
+            INSERT INTO presentations (topic, slides, style, background_color, include_images, content_depth)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            history_data['topic'],
+            history_data['slides'],
+            history_data['style'],
+            history_data['background_color'],
+            history_data.get('include_images', False),
+            history_data.get('content_depth', 'detailed')
+        ))
+        presentation_id = cursor.lastrowid
+    
     conn.commit()
     conn.close()
     
@@ -496,6 +539,7 @@ def update_presentation_download(presentation_id: int):
         WHERE id = ?
     ''', (presentation_id,))
     
+    # Update total downloads in metrics
     cursor.execute('''
         UPDATE app_metrics 
         SET total_downloads = total_downloads + 1, updated_at = CURRENT_TIMESTAMP 
@@ -720,9 +764,6 @@ def get_metrics():
     except Exception as e:
         logger.error(f"Failed to fetch metrics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    
-
-# ... (keep all your existing code above)
 
 @app.get("/api/test-ppt")
 def test_ppt():
@@ -759,4 +800,3 @@ def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

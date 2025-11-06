@@ -21,28 +21,68 @@ export default function App() {
   const [history, setHistory] = useState([])
   const [backgroundColor, setBackgroundColor] = useState("#FFFFFF")
   const [contentDepth, setContentDepth] = useState("detailed")
+  const [lastUpdate, setLastUpdate] = useState(Date.now()) // Force re-renders
 
-  const { fetchHealth, fetchOutline, generatePPT, fetchHistory, fetchMetrics, deleteHistoryItem, clearHistory } = useOllama()
+  const { 
+    fetchHealth, 
+    fetchOutline, 
+    generatePPT, 
+    fetchHistory, 
+    fetchMetrics, 
+    deleteHistoryItem, 
+    clearHistory 
+  } = useOllama()
 
+  // Load initial data
   useEffect(() => { 
     fetchHealth().then(setStatus)
     loadHistory()
     loadMetrics()
   }, [])
 
+  // Persist theme in localStorage
   useEffect(() => { 
     localStorage.setItem('theme', theme) 
   }, [theme])
 
+  // ✅ FIXED timestamp formatting (auto-local time)
+  const formatTimestamp = (timestamp) => {
+  if (!timestamp) return "Unknown date";
+
+  try {
+    // SQLite timestamps are "YYYY-MM-DD HH:mm:ss" (UTC)
+    // Convert to ISO format so JS treats it as UTC
+    const utcString = timestamp.replace(" ", "T") + "Z";
+    const date = new Date(utcString);
+
+    return date.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  } catch (error) {
+    console.error("Error formatting timestamp:", error);
+    return "Invalid date";
+  }
+};
+
+
+  // Load history data
   const loadHistory = async () => {
     try {
       const data = await fetchHistory()
       setHistory(data.presentations || [])
+      setLastUpdate(Date.now()) // Force refresh
     } catch (error) {
       console.error('Failed to load history:', error)
     }
   }
 
+  // Load metrics data
   const loadMetrics = async () => {
     try {
       const data = await fetchMetrics()
@@ -52,11 +92,7 @@ export default function App() {
     }
   }
 
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'Unknown date'
-    return new Date(timestamp).toLocaleString()
-  }
-
+  // Generate presentation outline
   const onGenerate = async (topic, slides, includeImages, bgColor = "#FFFFFF", depth = "detailed") => {
     setIsGenerating(true)
     setBackgroundColor(bgColor)
@@ -82,6 +118,7 @@ export default function App() {
     }
   }
 
+  // Download presentation (and refresh metrics/history)
   const onDownload = async (topic, slides, includeImages, bgColor = "#FFFFFF", depth = "detailed") => {
     setIsGenerating(true)
     try {
@@ -103,10 +140,12 @@ export default function App() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
 
-      // Reload metrics and history to get updated counts
+      // Wait for backend to update metrics/history
+      await new Promise(resolve => setTimeout(resolve, 1000))
       await loadMetrics()
       await loadHistory()
       
+      console.log(`✅ Presentation "${topic}" downloaded successfully! History updated.`)
     } catch (error) {
       console.error('Download failed:', error)
       alert('Failed to generate PPT. Please try again.')
@@ -115,6 +154,7 @@ export default function App() {
     }
   }
 
+  // Delete history
   const onDeleteHistory = async (presentationId = null) => {
     try {
       if (presentationId) {
@@ -130,6 +170,13 @@ export default function App() {
     }
   }
 
+  // Manual refresh
+  const refreshHistory = async () => {
+    await loadHistory()
+    await loadMetrics()
+  }
+
+  // Helper for slide depth color tag
   const getDepthColor = (depth) => {
     switch(depth) {
       case 'basic': return 'blue'
@@ -142,17 +189,20 @@ export default function App() {
   return (
     <BrowserRouter>
       <Shell theme={theme}>
+        {/* Header section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <ToggleTheme theme={theme} setTheme={setTheme} />
           <Dashboard downloads={downloads} status={status} />
         </div>
 
+        {/* Prompt Input */}
         <PromptBox 
           onGenerate={onGenerate} 
           onDownload={onDownload} 
           isGenerating={isGenerating}
         />
 
+        {/* Generating indicator */}
         {isGenerating && (
           <div className="glass p-4 mt-4 text-center">
             <div className="animate-pulse flex items-center justify-center gap-2">
@@ -164,6 +214,7 @@ export default function App() {
           </div>
         )}
 
+        {/* Routes */}
         <Routes>
           <Route path="/" element={
             outline.length > 0 ? (
@@ -186,6 +237,8 @@ export default function App() {
                     ></div>
                   </div>
                 </div>
+
+                {/* Slide preview grid */}
                 <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-4">
                   {outline.map((s, i) => (
                     <SlidePreview 
@@ -203,13 +256,19 @@ export default function App() {
               <Home />
             )
           }/>
+
+          {/* History Page */}
           <Route path="/history" element={
             <History 
               history={history} 
               onDeleteHistory={onDeleteHistory}
               formatTimestamp={formatTimestamp}
+              refreshHistory={refreshHistory}
+              lastUpdate={lastUpdate}
             />
           } />
+
+          {/* Settings Page */}
           <Route path="/settings" element={<Settings status={status} metrics={{downloads}} />} />
         </Routes>
       </Shell>
