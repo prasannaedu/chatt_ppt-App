@@ -6,7 +6,7 @@ import PromptBox from './components/PromptBox.jsx'
 import SlidePreview from './components/SlidePreview.jsx'
 import ToggleTheme from './components/ToggleTheme.jsx'
 import Dashboard from './components/Dashboard.jsx'
-import useOllama from './hooks/useOllama.js'
+import useHuggingFace from './hooks/useHuggingFace.js'  // Changed from useOllama
 
 import Home from "./pages/Home.jsx"
 import History from "./pages/History.jsx"
@@ -15,7 +15,7 @@ import Settings from "./pages/Settings.jsx"
 export default function App() {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'blue')
   const [outline, setOutline] = useState([])
-  const [status, setStatus] = useState({ ok: false, model: 'phi3:mini' })
+  const [status, setStatus] = useState({ ok: false, model: 'google/flan-t5-base' })  // Updated model
   const [downloads, setDownloads] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [history, setHistory] = useState([])
@@ -31,7 +31,7 @@ export default function App() {
     fetchMetrics, 
     deleteHistoryItem, 
     clearHistory 
-  } = useOllama()
+  } = useHuggingFace()  // Changed from useOllama
 
   // Load initial data
   useEffect(() => { 
@@ -112,7 +112,7 @@ export default function App() {
       await loadHistory()
     } catch (error) {
       console.error('Generation failed:', error)
-      alert('Failed to generate outline. Please check if Ollama is running.')
+      alert('Failed to generate outline. Please check if the backend is running.')
     } finally {
       setIsGenerating(false)
     }
