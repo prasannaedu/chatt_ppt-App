@@ -2,7 +2,7 @@ import React from 'react'
 
 export default function Home() {
   const features = [
-    { icon: '🤖', title: 'AI-Powered', desc: 'Uses local Phi-3 model for content' },
+    { icon: '🤖', title: 'AI-Powered', desc: 'Uses Ai model for content' },
     { icon: '🎨', title: 'Beautiful Themes', desc: 'Blue professional & pink creative' },
     { icon: '🖼️', title: 'AI Images', desc: 'Optional image generation' },
     { icon: '📊', title: 'Professional', desc: 'Clean, structured presentations' },

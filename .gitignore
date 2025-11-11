@@ -1,5 +1,5 @@
 # Create .gitignore in your project root
-cat > .gitignore << 'EOF'
+
 # Python
 __pycache__/
 *.py[cod]
@@ -55,4 +55,9 @@ logs/
 # Temporary files
 *.tmp
 *.temp
-EOF
+# Output files
+*.pptx
+*.pdf
+
+
+

@@ -6,22 +6,38 @@ import PromptBox from './components/PromptBox.jsx'
 import SlidePreview from './components/SlidePreview.jsx'
 import ToggleTheme from './components/ToggleTheme.jsx'
 import Dashboard from './components/Dashboard.jsx'
-import useHuggingFace from './hooks/useHuggingFace.js'  // Changed from useOllama
+import useHuggingFace from './hooks/useHuggingFace.js'
 
 import Home from "./pages/Home.jsx"
 import History from "./pages/History.jsx"
 import Settings from "./pages/Settings.jsx"
 
+// Define background colors for frontend use
+const BACKGROUND_COLORS = {
+  "Pure White": "#FFFFFF",
+  "Soft Gray": "#F8FAFC", 
+  "Warm White": "#FEF7EE",
+  "Ice Blue": "#F0F9FF",
+  "Mint Cream": "#F0FDF4",
+  "Lavender": "#FDF4FF",
+  "Peach": "#FFF7ED",
+  "Dark Mode": "#1E293B",
+  "Professional Blue": "#F0F7FF",
+  "Executive Gray": "#F8FAFC"
+};
+
 export default function App() {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'blue')
   const [outline, setOutline] = useState([])
-  const [status, setStatus] = useState({ ok: false, model: 'google/flan-t5-base' })  // Updated model
+  const [status, setStatus] = useState({ ok: false, model: 'gemini-2.5-flash-lite' })
   const [downloads, setDownloads] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [history, setHistory] = useState([])
   const [backgroundColor, setBackgroundColor] = useState("#FFFFFF")
   const [contentDepth, setContentDepth] = useState("detailed")
-  const [lastUpdate, setLastUpdate] = useState(Date.now()) // Force re-renders
+  const [lastUpdate, setLastUpdate] = useState(Date.now())
+  const [backgroundOptions, setBackgroundOptions] = useState(BACKGROUND_COLORS)
+  const [contentDepthOptions, setContentDepthOptions] = useState({})
 
   const { 
     fetchHealth, 
@@ -31,52 +47,82 @@ export default function App() {
     fetchMetrics, 
     deleteHistoryItem, 
     clearHistory 
-  } = useHuggingFace()  // Changed from useOllama
+  } = useHuggingFace()
 
   // Load initial data
   useEffect(() => { 
     fetchHealth().then(setStatus)
     loadHistory()
     loadMetrics()
+    fetchContentDepths()
   }, [])
+
+  // Fetch content depths
+  const fetchContentDepths = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/content-depths')
+      if (response.ok) {
+        const depths = await response.json()
+        setContentDepthOptions(depths)
+      } else {
+        throw new Error('Failed to fetch content depths')
+      }
+    } catch (error) {
+      console.error('Failed to fetch content depths:', error)
+      setContentDepthOptions({
+        "basic": "Basic (3 bullets, 5-7 words each)",
+        "detailed": "Detailed (4 bullets, 8-12 words each)", 
+        "comprehensive": "Comprehensive (5 bullets, 12-15 words each)"
+      })
+    }
+  }
 
   // Persist theme in localStorage
   useEffect(() => { 
     localStorage.setItem('theme', theme) 
   }, [theme])
 
-  // ✅ FIXED timestamp formatting (auto-local time)
+  // ✅ FIXED timestamp formatting
   const formatTimestamp = (timestamp) => {
-  if (!timestamp) return "Unknown date";
+    if (!timestamp) return "Unknown date";
 
-  try {
-    // SQLite timestamps are "YYYY-MM-DD HH:mm:ss" (UTC)
-    // Convert to ISO format so JS treats it as UTC
-    const utcString = timestamp.replace(" ", "T") + "Z";
-    const date = new Date(utcString);
+    try {
+      // Handle both SQLite format and ISO format
+      let date;
+      if (timestamp.includes(' ')) {
+        // SQLite format: "YYYY-MM-DD HH:mm:ss"
+        const utcString = timestamp.replace(" ", "T") + "Z";
+        date = new Date(utcString);
+      } else {
+        // ISO format or other
+        date = new Date(timestamp);
+      }
 
-    return date.toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    });
-  } catch (error) {
-    console.error("Error formatting timestamp:", error);
-    return "Invalid date";
-  }
-};
+      if (isNaN(date.getTime())) {
+        return "Invalid date";
+      }
 
+      return date.toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch (error) {
+      console.error("Error formatting timestamp:", error);
+      return "Invalid date";
+    }
+  };
 
   // Load history data
   const loadHistory = async () => {
     try {
       const data = await fetchHistory()
       setHistory(data.presentations || [])
-      setLastUpdate(Date.now()) // Force refresh
+      setLastUpdate(Date.now())
+      console.log(`✅ Loaded ${data.presentations?.length || 0} history items`)
     } catch (error) {
       console.error('Failed to load history:', error)
     }
@@ -134,7 +180,7 @@ export default function App() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${topic.replace(/[^a-z0-9_-]+/gi,'_')}.pptx`
+      a.download = `${topic.replace(/[^a-z0-9_-]+/gi,'_')}_presentation.pptx`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -145,7 +191,7 @@ export default function App() {
       await loadMetrics()
       await loadHistory()
       
-      console.log(`✅ Presentation "${topic}" downloaded successfully! History updated.`)
+      console.log(`✅ Presentation "${topic}" downloaded successfully!`)
     } catch (error) {
       console.error('Download failed:', error)
       alert('Failed to generate PPT. Please try again.')
@@ -186,6 +232,10 @@ export default function App() {
     }
   }
 
+  const getColorName = (colorValue) => {
+    return Object.keys(backgroundOptions).find(key => backgroundOptions[key] === colorValue) || 'Custom Color';
+  }
+
   return (
     <BrowserRouter>
       <Shell theme={theme}>
@@ -200,16 +250,20 @@ export default function App() {
           onGenerate={onGenerate} 
           onDownload={onDownload} 
           isGenerating={isGenerating}
+          backgroundOptions={backgroundOptions}
+          contentDepthOptions={contentDepthOptions}
         />
 
         {/* Generating indicator */}
         {isGenerating && (
-          <div className="glass p-4 mt-4 text-center">
-            <div className="animate-pulse flex items-center justify-center gap-2">
+          <div className="glass p-4 mt-4 text-center border border-gray-200/50">
+            <div className="animate-pulse flex items-center justify-center gap-3">
               <div className="w-4 h-4 bg-blue-600 rounded-full animate-bounce"></div>
               <div className="w-4 h-4 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
               <div className="w-4 h-4 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-              <span className="ml-2">Generating enhanced AI content ({contentDepth} depth)...</span>
+              <span className="ml-2 font-semibold text-gray-700">
+                Generating enhanced {contentDepth} AI content with {contentDepth === 'basic' ? 3 : contentDepth === 'detailed' ? 4 : 5} bullet points per slide...
+              </span>
             </div>
           </div>
         )}
@@ -218,28 +272,39 @@ export default function App() {
         <Routes>
           <Route path="/" element={
             outline.length > 0 ? (
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-4">
+              <div className="mt-8">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                   <div>
-                    <h2 className="text-xl font-bold">Enhanced Slide Preview</h2>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-xs px-2 py-1 rounded-full bg-${getDepthColor(contentDepth)}-100 text-${getDepthColor(contentDepth)}-800`}>
+                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                      <span>✨</span>
+                      Enhanced Slide Preview
+                    </h2>
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
+                      <span className={`text-sm px-3 py-1 rounded-full bg-${getDepthColor(contentDepth)}-100 text-${getDepthColor(contentDepth)}-800 border border-${getDepthColor(contentDepth)}-200 font-semibold`}>
                         {contentDepth.toUpperCase()} CONTENT
                       </span>
-                      <span className="text-xs text-gray-500">{outline.length} slides generated</span>
+                      <span className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
+                        {outline.length} slides generated
+                      </span>
+                      <span className="text-sm text-green-600 bg-green-100 px-3 py-1 rounded-full border border-green-200">
+                        {contentDepth === 'comprehensive' ? '5' : contentDepth === 'detailed' ? '4' : '3'} bullets per slide
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>Background:</span>
+                  <div className="flex items-center gap-3 text-sm text-gray-700 bg-white/80 px-4 py-2 rounded-full border border-gray-200">
+                    <span className="font-semibold">Background:</span>
                     <div 
-                      className="w-6 h-6 rounded border border-gray-300"
+                      className="w-8 h-8 rounded-full border-2 border-gray-300 shadow-sm"
                       style={{ backgroundColor: backgroundColor }}
                     ></div>
+                    <span className="font-medium">
+                      {getColorName(backgroundColor)}
+                    </span>
                   </div>
                 </div>
 
                 {/* Slide preview grid */}
-                <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-6">
                   {outline.map((s, i) => (
                     <SlidePreview 
                       key={i} 
@@ -250,6 +315,31 @@ export default function App() {
                       contentDepth={contentDepth}
                     />
                   ))}
+                </div>
+
+                {/* Action buttons at bottom */}
+                <div className="mt-8 glass p-6 border border-gray-200/50 rounded-lg">
+                  <div className="text-center">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                      Ready to Download Your Presentation?
+                    </h3>
+                    <p className="text-gray-600 mb-4">
+                      Your {outline.length}-slide {contentDepth} presentation is ready for download.
+                      {contentDepth === 'comprehensive' && ' Includes 5 comprehensive bullet points per slide.'}
+                    </p>
+                    <button 
+                      onClick={() => onDownload(
+                        outline[0]?.title || "Presentation", 
+                        outline.length, 
+                        false, 
+                        backgroundColor, 
+                        contentDepth
+                      )}
+                      className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-lg hover:shadow-xl font-semibold text-lg"
+                    >
+                      🚀 Download Complete PPT
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
