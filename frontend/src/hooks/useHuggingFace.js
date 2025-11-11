@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 export default function useHuggingFace() {
-  const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   const fetchWithErrorHandling = useCallback(async (url, options = {}) => {
     try {

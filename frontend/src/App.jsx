@@ -57,10 +57,13 @@ export default function App() {
     fetchContentDepths()
   }, [])
 
-  // Fetch content depths
+  // Fetch content depths - FIXED THIS FUNCTION
   const fetchContentDepths = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/content-depths')
+      const API_URL = import.meta.env.VITE_API_URL;
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/content-depths`)
+
+
       if (response.ok) {
         const depths = await response.json()
         setContentDepthOptions(depths)
